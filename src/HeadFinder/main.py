@@ -19,7 +19,7 @@ def GetWordShape(theString):
                     isUpperCase = True
                 if i[0].islower():
                     isLowerCase = True
-            if i[0].isnumeric():
+            if i[0].isdigit():
                 isDigit = True
     if isUpperCase==True and isLowerCase==True and isDigit==False:
         return 'mixed'
@@ -41,6 +41,7 @@ def PreProcess(theString):
 
 def GetUnigram(theString):
     """Returns list of Unigrams"""
+    theString
     return theString.split(' ')
 
 
@@ -78,7 +79,7 @@ def getCategories(fileLocation):
     return catList, subCatList
 
 
-def MostSimilarCategory(optimumSense, categories):
+def mostSimilarCategory(optimumSense, categories):
     """Returns most similar category based on sense given
     using path similarity"""
     categoryScores = []
@@ -107,7 +108,7 @@ def MostSimilarCategory(optimumSense, categories):
 
 
 
-def FinalDecision(MostSimilarList, optimumSense):
+def finalDecision(MostSimilarList, optimumSense):
     """If more than one category with (equal) max path similarity score, this returns a final 
     decision by taking into summing all path similarities words in description (where one exists) 
     and dividing by the number of words used"""
@@ -138,28 +139,32 @@ def Algo2(question, headWord, label):
     """computes the maximum number of common words between gloss of this sense and gloss of any sense 
     of the context words. Among all head word senses, the sense which results in the maximum common 
     words is chosen as the optimal sense and is returned"""
-    synsets = wn.synsets(headWord)
-    h = [synsets[i].definition() for i in range(len(synsets))]
-    q = question
-    count, index = 0, 0
-    maxCount = -1
-    optimum = None
-    for s in h:#for each sense s for h do
-        count = 0
-        for w in q.split(' '):#for each context word w in q do  
-            y = wn.synsets(w)
-            wSenses = [y[i].definition() for i in range(len(y))]#get senses of w
-            sumMax = 0
-            for wSense in wSenses:#for each sense        
-                for word in wSense:#and each word of each sense
-                    if word in s.split(' '):#if common word found
-                        sumMax += 1
-            count = count + sumMax
-        if count > maxCount:
-            maxCount = count
-            optimum = s
-            index = h.index(s)
-    return synsets[index]
+    synsets = wn.synsets(headWord, pos=label)
+    if not synsets:
+        synsets = wn.synsets(headWord)
+    if synsets:
+        h = [synsets[i].definition() for i in range(len(synsets))]
+        q = question
+        count, index = 0, 0
+        maxCount = -1
+        optimum = None
+        for s in h:#for each sense s for h do
+            count = 0
+            for w in q.split(' '):#for each context word w in q do  
+                y = wn.synsets(w)
+                wSenses = [y[i].definition() for i in range(len(y))]#get senses of w
+                sumMax = 0
+                for wSense in wSenses:#for each sense        
+                    for word in wSense:#and each word of each sense
+                        if word in s.split(' '):#if common word found
+                            sumMax += 1
+                count = count + sumMax
+            if count > maxCount:
+                maxCount = count
+                optimum = s
+                index = h.index(s)
+        return synsets[index]
+    return None
 
 
 def getHypernym(depth, sense):
@@ -193,25 +198,53 @@ def loadQuestions(file):
         lines = f.read().strip()
         lines = lines.split('\n')
     for line in lines:
-        returnList.append(re.split("\w+:\w+", line, maxsplit=1)[1])
+        line = ''.join([i if ord(i) < 128 else ' ' for i in line])
+        returnList.append(re.split("\w+:\w+", line, maxsplit=1)[1])  
     return returnList
 
 
+def convertPOS(thelabel):
+    if(thelabel.startswith('J')):
+        return  wn.ADJ
+    if(thelabel.startswith('N')):
+        return  wn.NOUN
+    if(thelabel.startswith('V')):
+        return  wn.VERB
+    if(thelabel.startswith('R')):
+        return  wn.ADV
+    
+
+                
 
 def main(questionLoc, categoriesLoc, featuresLoc):
     categories, subCategories = [],[]
     categories, subCategories = getCategories(categoriesLoc)
     questions = loadQuestions(questionLoc) 
     features = getFeatureLists(featuresLoc)
-
+    finalString = ''
 
     for i in range(len(questions)):
+        disambedSens = None
+        whWord = features[i][0]
         headWord = features[i][1]
         label = features[i][2]
-        print i, headWord, label
+        label = convertPOS(label)
+        question = questions[i].strip()
+        uni = GetUnigram(question)
+        bi = GetBigram(question)
+        tri = GetTrigram(question)
+        wordShape = GetWordShape(question)
+        #print i, whWord, headWord, label, questions[i]
         if ':' not in headWord:
             optimalSense = Algo2(questions[i], headWord, label)
-            disambedSens = getHypernym(5, optimalSense)
+            if optimalSense is not None:
+                disambedSens = getHypernym(5, optimalSense)
+                cat = mostSimilarCategory(disambedSens, subCategories)
+                print question, cat, len(cat)
+                if len(cat)>1:
+                    cat = finalDecision(cat, disambedSens)
+                print cat
+        #print whWord, disambedSens, wordShape, uni, bi, tri
         
 
 questionLoc = "C:\\Users\\spimi\\workspace\\Thesis\\Data\\QuestionClassification\\train_5500.label.txt"   
